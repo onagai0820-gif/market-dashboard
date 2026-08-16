@@ -2,7 +2,7 @@
 
 // 相場の全体像をつかむための既定の組み合わせ。設定画面から変更できる。
 const DEFAULT_WATCHLIST = [
-  'NIKKEI225', 'TOPIX', 'SP500', 'NASDAQCOM', 'VIXCLS', 'USD/JPY', 'DGS10', 'XAU/USD',
+  'NIKKEI225', 'SP500', 'NASDAQCOM', 'DJIA', 'VIXCLS', 'USD/JPY', 'DGS10', 'XAU/USD',
 ];
 const NEWS_PAGE = 25;
 const STORE_WATCHLIST = 'watchlist';
