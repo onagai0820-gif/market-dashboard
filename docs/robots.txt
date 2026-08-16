@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://REPLACE_WITH_SITE_URL/sitemap.xml
+Sitemap: https://onagai0820-gif.github.io/market-dashboard/sitemap.xml
