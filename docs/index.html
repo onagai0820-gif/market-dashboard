@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>マーケットボード | 世界の株価・指数・マーケットニュース</title>
+<meta name="description" content="世界の主要株価指数、VIX指数、為替、コモディティ、主要銘柄の株価と、マーケット関連ニュースをまとめて確認できるダッシュボードです。">
+<meta property="og:title" content="マーケットボード">
+<meta property="og:description" content="世界の株価指数・VIX・為替・コモディティ・マーケットニュースを1ページで。">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#07070a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101015'/%3E%3Cpath d='M6 22l6-7 5 4 8-11' fill='none' stroke='%234d94ff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "マーケットボード",
+  "description": "世界の主要株価指数、VIX指数、為替、コモディティ、主要銘柄の株価とマーケットニュースをまとめたダッシュボード",
+  "inLanguage": "ja"
+}
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">本文へスキップ</a>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M6 22l6-7 5 4 8-11" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div>
+        <span class="brand-name">マーケットボード</span>
+        <span class="brand-sub">世界の株価・指数・ニュース</span>
+      </div>
+    </div>
+    <div class="header-tools">
+      <p class="updated" id="updated">読み込み中…</p>
+      <button type="button" id="theme-toggle" class="icon-btn" aria-label="表示テーマを切り替え">
+        <span aria-hidden="true" id="theme-icon">◐</span>
+      </button>
+    </div>
+  </div>
+  <nav class="site-nav" aria-label="セクション">
+    <div class="wrap nav-inner" id="section-nav"></div>
+  </nav>
+</header>
+
+<main id="main" class="wrap">
+  <section class="highlights" aria-label="注目の指標">
+    <h2 class="sr-only">注目の指標</h2>
+    <div class="highlight-grid" id="highlights"></div>
+  </section>
+
+  <div id="market-sections"></div>
+
+  <section class="news" id="news" aria-labelledby="news-heading">
+    <div class="section-head">
+      <div>
+        <h2 id="news-heading">マーケットニュース</h2>
+        <p class="section-note">経済・市場関連の主要メディアの見出しを集約しています</p>
+      </div>
+      <div class="segmented" role="group" aria-label="ニュースの言語">
+        <button type="button" data-lang="all" class="is-active">すべて</button>
+        <button type="button" data-lang="ja">日本語</button>
+        <button type="button" data-lang="en">English</button>
+      </div>
+    </div>
+    <ol class="news-list" id="news-list"></ol>
+    <button type="button" class="more-btn" id="news-more">もっと見る</button>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="disclaimer">
+      <strong>免責事項</strong>：本サイトの情報は市場データ提供元から自動取得したものを情報提供のみを目的として掲載しており、
+      正確性・完全性・即時性を保証するものではありません。価格には遅延が含まれる場合があります。
+      投資判断は必ずご自身の責任で、一次情報をご確認のうえ行ってください。本サイトは投資勧誘を目的としたものではありません。
+    </p>
+    <p class="credits">
+      株価データ: Yahoo Finance ／ ニュース: 各配信元RSS ・ 見出しと要約の著作権は各配信元に帰属します
+    </p>
+  </div>
+</footer>
+
+<div class="detail-backdrop" id="detail" hidden>
+  <div class="detail-panel" role="dialog" aria-modal="true" aria-labelledby="detail-name">
+    <div class="detail-head">
+      <div>
+        <h3 id="detail-name"></h3>
+        <p class="detail-sub" id="detail-sub"></p>
+      </div>
+      <button type="button" class="icon-btn" id="detail-close" aria-label="閉じる">✕</button>
+    </div>
+    <div class="detail-price">
+      <span class="detail-value" id="detail-price"></span>
+      <span id="detail-delta"></span>
+    </div>
+    <div class="segmented range-picker" role="group" aria-label="表示期間" id="range-picker">
+      <button type="button" data-range="30">1ヶ月</button>
+      <button type="button" data-range="90">3ヶ月</button>
+      <button type="button" data-range="180">6ヶ月</button>
+      <button type="button" data-range="365" class="is-active">1年</button>
+    </div>
+    <figure class="detail-chart">
+      <div id="detail-chart"></div>
+      <figcaption id="detail-caption"></figcaption>
+    </figure>
+    <dl class="detail-stats" id="detail-stats"></dl>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

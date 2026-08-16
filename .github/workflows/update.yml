@@ -1,0 +1,42 @@
+name: 市場データ更新
+
+on:
+  schedule:
+    # 平日は日中〜米国市場の時間帯を厚めに、UTC で指定（JST = UTC+9）
+    - cron: "5 0,3,6,9,12,15,18,21 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: データ取得
+        env:
+          REQUEST_INTERVAL: "2.0"
+        run: python scripts/build_data.py
+
+      - name: 変更をコミット
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/data
+          if git diff --staged --quiet; then
+            echo "変更なし"
+          else
+            git commit -m "chore: 市場データを更新 ($(date -u '+%Y-%m-%d %H:%M UTC'))"
+            git push
+          fi
