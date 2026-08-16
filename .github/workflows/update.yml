@@ -2,8 +2,10 @@ name: 市場データ更新
 
 on:
   schedule:
-    # 平日は日中〜米国市場の時間帯を厚めに、UTC で指定（JST = UTC+9）
-    - cron: "5 0,3,6,9,12,15,18,21 * * *"
+    # FRED・ECB とも1日1回の更新なので、各市場の終値が出そろう時間帯に取りに行く。
+    # UTC 指定（JST = UTC+9）。
+    - cron: "20 22 * * 1-6"
+    - cron: "20 10 * * 1-5"
   workflow_dispatch:
 
 permissions:
@@ -26,7 +28,8 @@ jobs:
 
       - name: データ取得
         env:
-          REQUEST_INTERVAL: "2.0"
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          TWELVE_DATA_KEY: ${{ secrets.TWELVE_DATA_KEY }}
         run: python scripts/build_data.py
 
       - name: 変更をコミット

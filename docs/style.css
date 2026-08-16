@@ -24,6 +24,7 @@
   --down-soft: rgba(240, 74, 86, 0.14);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.45);
   --radius: 13px;
+  --header-h: 58px;
   --sans: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif;
 }
 
@@ -81,6 +82,29 @@ body::before {
 
 .wrap { max-width: 1180px; margin: 0 auto; padding: 0 20px; }
 
+/* ------------------------------------------------------------- レイアウト */
+/* 左2割をニュースの帯、右8割を相場面にする。帯と相場面はそれぞれ独立に縦スクロールする。 */
+
+.layout {
+  position: relative; z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(230px, 20%) 1fr;
+  height: calc(100dvh - var(--header-h));
+}
+
+.news-rail {
+  display: flex; flex-direction: column; min-height: 0;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+}
+
+.board {
+  min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  padding: 0 26px 0;
+}
+
+.mobile-tabs { display: none; }
+
 .sr-only {
   position: absolute; width: 1px; height: 1px;
   padding: 0; margin: -1px; overflow: hidden;
@@ -101,6 +125,7 @@ a { color: inherit; }
 
 .site-header {
   position: sticky; top: 0; z-index: 20;
+  height: var(--header-h);
   background: color-mix(in srgb, var(--plane) 82%, transparent);
   backdrop-filter: saturate(160%) blur(16px);
   border-bottom: 1px solid var(--border);
@@ -108,7 +133,7 @@ a { color: inherit; }
 
 .header-inner {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 16px; padding-top: 12px; padding-bottom: 12px;
+  gap: 16px; height: 100%; padding: 0 20px;
 }
 
 .brand { display: flex; align-items: center; gap: 10px; }
@@ -142,12 +167,68 @@ a { color: inherit; }
 
 /* ------------------------------------------------------------ highlights */
 
-main { padding-bottom: 56px; }
-.highlights { padding-top: 24px; }
+.watchlist { padding-top: 22px; }
 
-.highlight-grid {
+.watch-grid {
   display: grid; gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+}
+
+.board-nav {
+  position: sticky; top: 0; z-index: 10; margin-top: 34px;
+  background: color-mix(in srgb, var(--plane) 90%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto; scrollbar-width: none;
+}
+.board-nav::-webkit-scrollbar { display: none; }
+.board-nav > div { display: flex; gap: 4px; padding: 7px 0; white-space: nowrap; }
+.board-nav a {
+  padding: 5px 11px; border-radius: 8px; font-size: 12.5px;
+  color: var(--ink-2); text-decoration: none;
+}
+.board-nav a:hover { background: var(--surface-alt); color: var(--ink); }
+
+.ghost-btn, .primary-btn {
+  font: inherit; font-size: 13px; cursor: pointer;
+  padding: 7px 14px; border-radius: 9px;
+}
+.ghost-btn {
+  background: var(--surface-alt); border: 1px solid var(--border);
+  color: var(--ink-2);
+}
+.ghost-btn:hover { color: var(--ink); border-color: var(--border-strong); }
+.primary-btn {
+  background: var(--accent); border: 1px solid transparent; color: #fff; font-weight: 600;
+}
+.primary-btn:hover { filter: brightness(1.1); }
+
+/* --------------------------------------------------------------- 設定 */
+
+.settings-panel { width: min(680px, 100%); }
+.settings-body { margin-top: 16px; }
+.settings-group + .settings-group { margin-top: 18px; }
+.settings-group h4 {
+  margin: 0 0 8px; font-size: 12px; color: var(--muted);
+  letter-spacing: 0.04em; font-weight: 650;
+}
+.settings-options {
+  display: grid; gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
+}
+.settings-options label {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  padding: 7px 10px; border-radius: 8px; font-size: 13px;
+  border: 1px solid var(--border); background: var(--surface-alt);
+}
+.settings-options label:hover { border-color: var(--border-strong); }
+.settings-options input { accent-color: var(--accent); flex: none; }
+.settings-options span {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.settings-foot {
+  display: flex; justify-content: space-between; gap: 12px;
+  margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);
 }
 
 .stat-tile {
@@ -262,43 +343,75 @@ table.quotes tbody tr:hover td { background: var(--accent-soft); }
 
 /* ------------------------------------------------------------------ news */
 
-.news { padding-top: 40px; scroll-margin-top: 108px; }
+.rail-head {
+  flex: none; display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 13px 14px 11px; border-bottom: 1px solid var(--border);
+}
+.rail-head h2 { margin: 0; font-size: 14px; letter-spacing: 0.02em; }
+
 .news-list {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
   list-style: none; margin: 0; padding: 0;
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); overflow: hidden;
-  box-shadow: var(--shadow), inset 0 1px 0 var(--edge);
 }
 .news-list li { border-bottom: 1px solid var(--grid); }
-.news-list li:last-child { border-bottom: 0; }
-.news-list a {
-  display: block; padding: 13px 16px; text-decoration: none;
+.news-list button {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  background: none; border: 0; font: inherit; color: inherit;
+  padding: 11px 14px;
 }
-.news-list a:hover { background: var(--accent-soft); }
+.news-list button:hover { background: var(--accent-soft); }
+.news-list button.is-active { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+
 .news-meta {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 11.5px; color: var(--muted); margin-bottom: 3px;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 10.5px; color: var(--muted); margin-bottom: 4px;
 }
-.news-source { font-weight: 600; color: var(--accent); }
-.news-title { font-size: 14.5px; font-weight: 600; line-height: 1.5; }
-.news-summary {
-  font-size: 12.5px; color: var(--ink-2); margin-top: 3px;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+.news-source { font-weight: 650; color: var(--ink-2); }
+/* 一次情報・専門メディア・総合媒体を色分けし、出所の性格が一目で分かるようにする。 */
+.tier-badge {
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em;
+  padding: 0 4px; border-radius: 3px; border: 1px solid currentColor;
+}
+.tier-badge.primary { color: var(--up-text); }
+.tier-badge.wire { color: var(--accent); }
+.tier-badge.general { color: var(--muted); }
+
+.news-title {
+  font-size: 12.8px; font-weight: 600; line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
 
 .more-btn {
-  display: block; width: 100%; margin-top: 12px; padding: 10px;
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: 10px; color: var(--ink-2); font: inherit; font-size: 13.5px;
-  cursor: pointer;
+  flex: none; display: block; width: 100%; padding: 11px;
+  background: none; border: 0; border-top: 1px solid var(--border);
+  color: var(--ink-2); font: inherit; font-size: 12.5px; cursor: pointer;
 }
 .more-btn:hover { background: var(--surface-alt); color: var(--ink); }
+
+/* ------------------------------------------------------- ニュース詳細 */
+
+.article-panel { width: min(560px, 100%); }
+.article-meta {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 0; font-size: 12px; color: var(--muted);
+}
+.article-title { margin: 12px 0 0; font-size: 19px; line-height: 1.45; }
+.article-summary {
+  margin: 12px 0 0; font-size: 14px; color: var(--ink-2); line-height: 1.8;
+  white-space: pre-wrap;
+}
+.article-link {
+  display: inline-block; margin-top: 18px; padding: 9px 16px;
+  background: var(--accent); color: #fff; text-decoration: none;
+  border-radius: 9px; font-size: 13.5px; font-weight: 600;
+}
+.article-link:hover { filter: brightness(1.1); }
 
 /* ---------------------------------------------------------------- footer */
 
 .site-footer {
-  border-top: 1px solid var(--border); background: var(--surface);
-  padding: 26px 0 40px; margin-top: 20px;
+  border-top: 1px solid var(--border);
+  padding: 24px 0 40px; margin-top: 40px;
 }
 .disclaimer { margin: 0; font-size: 12px; color: var(--ink-2); line-height: 1.75; }
 .credits { margin: 10px 0 0; font-size: 11.5px; color: var(--muted); }
@@ -367,11 +480,36 @@ table.quotes tbody tr:hover td { background: var(--accent-soft); }
 
 .empty-state { padding: 28px; text-align: center; color: var(--muted); font-size: 13.5px; }
 
+/* 画面が狭いときは2割/8割の並びが成立しないので、タブでの切り替えに変える。 */
+@media (max-width: 860px) {
+  .layout {
+    grid-template-columns: 1fr;
+    height: calc(100dvh - var(--header-h) - 42px);
+  }
+  .mobile-tabs {
+    position: relative; z-index: 1;
+    display: grid; grid-template-columns: 1fr 1fr; height: 42px;
+    background: var(--plane); border-bottom: 1px solid var(--border);
+  }
+  .mobile-tabs button {
+    background: none; border: 0; font: inherit; font-size: 13.5px;
+    color: var(--muted); cursor: pointer;
+  }
+  .mobile-tabs button.is-active {
+    color: var(--ink); font-weight: 650; box-shadow: inset 0 -2px 0 var(--accent);
+  }
+  .news-rail { border-right: 0; }
+  .news-rail[data-pane-hidden="true"], .board[data-pane-hidden="true"] { display: none; }
+  .board { padding: 0 16px; }
+}
+
 @media (max-width: 640px) {
   .brand-sub { display: none; }
   .stat-value { font-size: 22px; }
   .detail-value { font-size: 27px; }
   .detail-panel { padding: 16px; }
+  .watch-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .settings-options { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: no-preference) {

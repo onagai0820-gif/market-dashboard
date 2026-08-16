@@ -8,7 +8,6 @@ import gzip
 import http.cookiejar
 import json
 import os
-import random
 import re
 import sys
 import time
@@ -20,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
-from symbols import GROUPS, MARKET_KEYWORDS, NEWS_FEEDS
+from symbols import ECB_CURRENCIES, GROUPS, MARKET_KEYWORDS, NEWS_FEEDS
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "docs" / "data"
@@ -30,11 +29,8 @@ UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 )
-CHART_HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"]
-
-# Yahoo Finance は短時間に多数のリクエストを送ると 429 を返し、しばらく解除されない。
-# 1件ずつ間隔を空けて取得する。
-REQUEST_INTERVAL = float(os.environ.get("REQUEST_INTERVAL", "1.5"))
+# Twelve Data の無料枠は毎分8リクエストまで。余裕をみて8秒ごとに1件とする。
+REQUEST_INTERVAL = float(os.environ.get("REQUEST_INTERVAL", "8"))
 _last_request_at = 0.0
 
 _opener = urllib.request.build_opener(
@@ -66,36 +62,22 @@ def http_get(url, timeout=25, headers=None, throttle=False):
 
 # --------------------------------------------------------------------------
 # 市場データ
+#
+# 取得元は3つ。いずれも提供元が公開しているAPIで、非公式の内部エンドポイントは使わない。
+#   FRED : 米セントルイス連銀。株価指数・金利・ボラティリティ・商品・暗号資産
+#   ECB  : 欧州中央銀行の参照相場（Frankfurter経由）。為替
+#   Twelve Data : 個別株・海外指数・貴金属。上2つに日次系列がないものだけ
 # --------------------------------------------------------------------------
 
-def fetch_chart(symbol, attempts=3):
-    """Yahoo Finance のチャートAPIから1年分の日足とメタ情報を取得する。"""
-    path = urllib.parse.quote(symbol, safe="")
-    last_err = None
-    for i in range(attempts):
-        host = CHART_HOSTS[i % len(CHART_HOSTS)]
-        url = (
-            f"https://{host}/v8/finance/chart/{path}"
-            "?interval=1d&range=1y&includePrePost=false"
-        )
-        try:
-            payload = json.loads(http_get(url, throttle=True))
-            result = (payload.get("chart") or {}).get("result")
-            if not result:
-                raise ValueError(f"empty result: {(payload.get('chart') or {}).get('error')}")
-            return result[0]
-        except urllib.error.HTTPError as err:
-            last_err = err
-            if err.code == 429:
-                time.sleep(20 * (i + 1) + random.random() * 5)
-            elif err.code == 404:
-                break
-            else:
-                time.sleep(2 * (i + 1))
-        except Exception as err:  # noqa: BLE001 - 失敗理由は問わず再試行する
-            last_err = err
-            time.sleep(2 * (i + 1))
-    raise RuntimeError(f"{symbol}: {last_err}")
+FRED_API_KEY = os.environ.get("FRED_API_KEY", "").strip()
+TWELVE_DATA_KEY = os.environ.get("TWELVE_DATA_KEY", "").strip()
+
+HISTORY_DAYS = 400  # 1年分の営業日を確保するため、暦日では多めに取る
+
+
+def observation_window():
+    end = datetime.now(timezone.utc).date()
+    return end - timedelta(days=HISTORY_DAYS), end
 
 
 def round_sig(value, digits=4):
@@ -111,54 +93,139 @@ def round_sig(value, digits=4):
     return round(value, max(digits, 6))
 
 
-def build_quote(symbol, display_name, subtitle):
-    raw = fetch_chart(symbol)
-    meta = raw.get("meta") or {}
-    timestamps = raw.get("timestamp") or []
-    closes = (((raw.get("indicators") or {}).get("quote") or [{}])[0]).get("close") or []
+def make_quote(key, name, subtitle, unit, source, dates, values):
+    """日付と終値の並びから、画面が使う1銘柄分のデータを組み立てる。"""
+    if not values:
+        raise ValueError("観測値がありません")
 
-    # {"t":…,"c":…} の配列よりキーの繰り返しがない並列配列のほうが転送量が小さい。
-    hist_t, hist_c = [], []
-    for timestamp, close in zip(timestamps, closes):
-        if close is not None:
-            hist_t.append(timestamp)
-            hist_c.append(round_sig(close))
+    hist_t = [
+        int(datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
+        for d in dates
+    ]
+    hist_c = [round_sig(v) for v in values]
 
-    price = meta.get("regularMarketPrice")
-    if price is None and hist_c:
-        price = hist_c[-1]
-
-    # meta の chartPreviousClose は「取得期間の開始前の終値」なので、range=1y だと
-    # 1年前の値になってしまう。前日比には使えない。日足の最後から2番目を前日終値とする。
-    prev_close = meta.get("previousClose")
-    if prev_close is None and len(hist_c) >= 2:
-        prev_close = hist_c[-2]
-
+    price = hist_c[-1]
+    prev_close = hist_c[-2] if len(hist_c) >= 2 else None
     change = change_pct = None
-    if price is not None and prev_close:
+    if prev_close is not None:
         change = price - prev_close
-        change_pct = change / prev_close * 100
+        if prev_close != 0:
+            change_pct = change / prev_close * 100
+
+    # 52週の高安は「直近N件」では数えられない。暗号資産のように土日も値が付く系列と、
+    # 週次でしか出ない系列とでは1年あたりの件数が違うため、日付で区切る。
+    year_ago = (
+        datetime.strptime(dates[-1], "%Y-%m-%d") - timedelta(days=365)
+    ).strftime("%Y-%m-%d")
+    window = [c for d, c in zip(dates, hist_c) if d >= year_ago] or hist_c
 
     return {
-        "symbol": symbol,
-        "name": display_name,
+        "symbol": key,
+        "name": name,
         "subtitle": subtitle,
-        "currency": meta.get("currency"),
-        "exchange": meta.get("fullExchangeName"),
-        "market_state": raw.get("meta", {}).get("marketState"),
-        "price": round_sig(price),
-        "prev_close": round_sig(prev_close),
+        "unit": unit,
+        "source": source,
+        "price": price,
+        "prev_close": prev_close,
         "change": round_sig(change),
         "change_pct": round(change_pct, 2) if change_pct is not None else None,
-        "day_high": round_sig(meta.get("regularMarketDayHigh")),
-        "day_low": round_sig(meta.get("regularMarketDayLow")),
-        "w52_high": round_sig(meta.get("fiftyTwoWeekHigh")),
-        "w52_low": round_sig(meta.get("fiftyTwoWeekLow")),
-        "market_time": meta.get("regularMarketTime"),
-        "timezone": meta.get("exchangeTimezoneName"),
+        "w52_high": max(window),
+        "w52_low": min(window),
+        "as_of": dates[-1],
         "history": {"t": hist_t, "c": hist_c},
         "stale": False,
     }
+
+
+# ------------------------------------------------------------------ FRED
+
+def fetch_fred(series_id):
+    """FREDの観測値を取得する。欠測は "." で返るため取り除く。"""
+    if not FRED_API_KEY:
+        raise RuntimeError("FRED_API_KEY が設定されていません")
+    start, end = observation_window()
+    query = urllib.parse.urlencode({
+        "series_id": series_id,
+        "api_key": FRED_API_KEY,
+        "file_type": "json",
+        "observation_start": start.isoformat(),
+        "observation_end": end.isoformat(),
+    })
+    payload = json.loads(http_get(f"https://api.stlouisfed.org/fred/series/observations?{query}"))
+
+    dates, values = [], []
+    for obs in payload.get("observations", []):
+        if obs["value"] in (".", ""):
+            continue
+        dates.append(obs["date"])
+        values.append(float(obs["value"]))
+    return dates, values
+
+
+# ------------------------------------------------------------------- ECB
+
+def fetch_ecb_matrix():
+    """ECBの参照相場を1リクエストでまとめて取る。基準通貨はECBに合わせてEUR。"""
+    start, end = observation_window()
+    symbols = ",".join(ECB_CURRENCIES)
+    url = (f"https://api.frankfurter.dev/v1/{start.isoformat()}..{end.isoformat()}"
+           f"?base=EUR&symbols={symbols}")
+    payload = json.loads(http_get(url))
+    return payload.get("rates", {})
+
+
+def ecb_pair_series(matrix, pair):
+    """EUR建ての表から任意の通貨ペアを組み立てる。
+
+    ECBが配るのは EUR→X の値なので、USD/JPY のような組み合わせは
+    (EUR→JPY) ÷ (EUR→USD) で求める。
+    """
+    base, quote = pair.split("/")
+    dates, values = [], []
+    for date in sorted(matrix):
+        row = matrix[date]
+        base_rate = 1.0 if base == "EUR" else row.get(base)
+        quote_rate = 1.0 if quote == "EUR" else row.get(quote)
+        if not base_rate or not quote_rate:
+            continue
+        dates.append(date)
+        values.append(quote_rate / base_rate)
+    return dates, values
+
+
+# ----------------------------------------------------------- Twelve Data
+
+def fetch_twelve_data(symbol):
+    """Twelve Data の日足を取得する。無料枠は毎分8リクエストまで。"""
+    if not TWELVE_DATA_KEY:
+        raise RuntimeError("TWELVE_DATA_KEY が設定されていません")
+    query = urllib.parse.urlencode({
+        "symbol": symbol,
+        "interval": "1day",
+        "outputsize": 300,
+        "apikey": TWELVE_DATA_KEY,
+        "order": "ASC",
+    })
+    payload = json.loads(http_get(f"https://api.twelvedata.com/time_series?{query}", throttle=True))
+
+    if payload.get("status") == "error":
+        raise RuntimeError(payload.get("message", "不明なエラー"))
+
+    dates, values = [], []
+    for row in payload.get("values", []):
+        close = row.get("close")
+        if close in (None, ""):
+            continue
+        dates.append(row["datetime"][:10])
+        values.append(float(close))
+    return dates, values
+
+
+SOURCE_LABEL = {
+    "fred": "FRED（セントルイス連銀）",
+    "ecb": "ECB（欧州中央銀行）",
+    "td": "Twelve Data",
+}
 
 
 def load_previous(path):
@@ -177,38 +244,43 @@ def build_markets():
         for item in group.get("items", [])
     }
 
-    jobs = [
-        (symbol, name, subtitle)
-        for group in GROUPS
-        for symbol, name, subtitle in group["items"]
-    ]
+    # 為替はまとめて1回だけ取得する。失敗しても他の取得は続ける。
+    ecb_matrix = {}
+    if any(src == "ecb" for group in GROUPS for src, *_ in group["items"]):
+        try:
+            ecb_matrix = fetch_ecb_matrix()
+            print(f"  ECB: {len(ecb_matrix)}営業日分", file=sys.stderr)
+        except Exception as err:  # noqa: BLE001
+            print(f"  ! ECB: {err}", file=sys.stderr)
 
-    results = {}
-    pending = jobs
-    for attempt in (1, 2):
-        failed = []
-        for symbol, name, subtitle in pending:
+    results, failures = {}, []
+    for group in GROUPS:
+        for source, series_id, name, subtitle, unit in group["items"]:
+            if source == "td" and not TWELVE_DATA_KEY:
+                continue  # キー未設定のときは黙って飛ばす（未設定は異常ではない）
             try:
-                results[symbol] = build_quote(symbol, name, subtitle)
-            except Exception as err:  # noqa: BLE001
-                failed.append((symbol, name, subtitle))
-                print(f"  ! {symbol}: {err}", file=sys.stderr)
-        pending = failed
-        if not pending or attempt == 2:
-            break
-        print(f"  {len(pending)}件を再取得します（60秒待機）", file=sys.stderr)
-        time.sleep(60)
+                if source == "fred":
+                    dates, values = fetch_fred(series_id)
+                elif source == "ecb":
+                    dates, values = ecb_pair_series(ecb_matrix, series_id)
+                elif source == "td":
+                    dates, values = fetch_twelve_data(series_id)
+                else:
+                    raise ValueError(f"未知の取得元: {source}")
 
-    failures = []
-    for symbol, _, _ in pending:
-        failures.append(symbol)
-        stale = prev_index.get(symbol)
-        if stale:
-            results[symbol] = {**stale, "stale": True}
+                results[series_id] = make_quote(
+                    series_id, name, subtitle, unit, SOURCE_LABEL[source], dates, values
+                )
+            except Exception as err:  # noqa: BLE001
+                failures.append(series_id)
+                print(f"  ! {series_id}: {err}", file=sys.stderr)
+                stale = prev_index.get(series_id)
+                if stale:
+                    results[series_id] = {**stale, "stale": True}
 
     groups = []
     for group in GROUPS:
-        items = [results[s] for s, _, _ in group["items"] if s in results]
+        items = [results[sid] for _, sid, *_ in group["items"] if sid in results]
         if items:
             groups.append({
                 "id": group["id"],
@@ -217,15 +289,15 @@ def build_markets():
                 "items": items,
             })
 
-    total = len(jobs)
-    fetched = total - len(failures)
-    print(f"markets: {fetched}/{total} 件取得", file=sys.stderr)
-    if fetched == 0:
+    total = sum(len(group["items"]) for group in GROUPS)
+    print(f"markets: {len(results)}/{total} 件", file=sys.stderr)
+    if not results:
         raise SystemExit("市場データを1件も取得できなかったため中断します")
 
+    sources = sorted({item["source"] for group in groups for item in group["items"]})
     payload = {
         "updated_at": datetime.now(JST).isoformat(timespec="seconds"),
-        "source": "Yahoo Finance",
+        "sources": sources,
         "failed": sorted(failures),
         "groups": groups,
     }
@@ -283,7 +355,7 @@ def find_text(node, *names):
 
 
 def parse_feed(xml_bytes):
-    root = ET.fromstring(xml_bytes)
+    root = ET.fromstring(xml_bytes)  # noqa: S314 - 取得元は既知のRSSのみ
     entries = (
         root.findall(".//item")
         + root.findall(".//rss:item", NS)
@@ -291,7 +363,7 @@ def parse_feed(xml_bytes):
     )
     articles = []
     for entry in entries:
-        title = clean_text(find_text(entry, "title", "rss:title", "atom:title"), 160)
+        title = trim_title(clean_text(find_text(entry, "title", "rss:title", "atom:title"), 200))
         link = find_text(entry, "link", "rss:link", "atom:link")
         if not title or not link:
             continue
@@ -309,6 +381,24 @@ def parse_feed(xml_bytes):
     return articles
 
 
+def trim_title(title):
+    """見出し末尾に付く媒体名やカテゴリ名（「… | 政治・経済 | 東洋経済」等）を落とす。
+
+    区切りの前後で本文が短くなりすぎる場合は、見出し自体に区切り記号が
+    含まれているとみなして手を付けない。
+    """
+    if not title:
+        return title
+    for sep in (" | ", " - ", " ｜ ", " – "):
+        if sep not in title:
+            continue
+        head = title.split(sep)[0].strip()
+        # 落とした結果が短すぎるなら、区切りは見出しの一部とみなして元に戻す。
+        if len(head) >= max(12, len(title) * 0.4):
+            title = head
+    return title
+
+
 def is_market_related(article):
     # 要約には媒体名や定型句が混ざるため、判定は見出しだけを対象にする。
     return any(keyword in article["title"] for keyword in MARKET_KEYWORDS)
@@ -317,7 +407,7 @@ def is_market_related(article):
 def build_news():
     cutoff = datetime.now(timezone.utc) - timedelta(days=7)
     collected = []
-    for name, url, lang, focused in NEWS_FEEDS:
+    for name, url, lang, focused, tier in NEWS_FEEDS:
         try:
             articles = parse_feed(http_get(url, timeout=25))
         except Exception as err:  # noqa: BLE001
@@ -330,7 +420,7 @@ def build_news():
                 continue
             if not focused and not is_market_related(article):
                 continue
-            collected.append({**article, "source": name, "lang": lang})
+            collected.append({**article, "source": name, "lang": lang, "tier": tier})
             kept += 1
             if kept >= 20:
                 break

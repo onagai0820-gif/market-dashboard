@@ -25,7 +25,7 @@
 <a class="skip-link" href="#main">本文へスキップ</a>
 
 <header class="site-header">
-  <div class="wrap header-inner">
+  <div class="header-inner">
     <div class="brand">
       <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M6 22l6-7 5 4 8-11" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <div>
@@ -35,53 +35,66 @@
     </div>
     <div class="header-tools">
       <p class="updated" id="updated">読み込み中…</p>
-      <button type="button" id="theme-toggle" class="icon-btn" aria-label="表示テーマを切り替え">
-        <span aria-hidden="true" id="theme-icon">◐</span>
+      <button type="button" id="settings-open" class="icon-btn" aria-label="表示する銘柄の設定">
+        <span aria-hidden="true">⚙</span>
+      </button>
+      <button type="button" id="theme-toggle" class="icon-btn" aria-label="ライトテーマに切り替え">
+        <span aria-hidden="true" id="theme-icon">☾</span>
       </button>
     </div>
   </div>
-  <nav class="site-nav" aria-label="セクション">
-    <div class="wrap nav-inner" id="section-nav"></div>
-  </nav>
 </header>
 
-<main id="main" class="wrap">
-  <section class="highlights" aria-label="注目の指標">
-    <h2 class="sr-only">注目の指標</h2>
-    <div class="highlight-grid" id="highlights"></div>
-  </section>
+<div class="mobile-tabs" role="tablist" aria-label="表示の切り替え">
+  <button type="button" role="tab" data-pane="markets" class="is-active" aria-selected="true">相場</button>
+  <button type="button" role="tab" data-pane="news" aria-selected="false">ニュース</button>
+</div>
 
-  <div id="market-sections"></div>
-
-  <section class="news" id="news" aria-labelledby="news-heading">
-    <div class="section-head">
-      <div>
-        <h2 id="news-heading">マーケットニュース</h2>
-        <p class="section-note">経済・市場関連の主要メディアの見出しを集約しています</p>
-      </div>
-      <div class="segmented" role="group" aria-label="ニュースの言語">
-        <button type="button" data-lang="all" class="is-active">すべて</button>
+<div class="layout">
+  <!-- 左2割：ニュースの帯。縦にスクロールし、選ぶと詳細が開く。 -->
+  <aside class="news-rail" id="news-pane" aria-labelledby="news-heading">
+    <div class="rail-head">
+      <h2 id="news-heading">ニュース</h2>
+      <div class="segmented compact" role="group" aria-label="ニュースの言語">
+        <button type="button" data-lang="all" class="is-active">全</button>
         <button type="button" data-lang="ja">日本語</button>
-        <button type="button" data-lang="en">English</button>
+        <button type="button" data-lang="en">EN</button>
       </div>
     </div>
     <ol class="news-list" id="news-list"></ol>
     <button type="button" class="more-btn" id="news-more">もっと見る</button>
-  </section>
-</main>
+  </aside>
 
-<footer class="site-footer">
-  <div class="wrap">
-    <p class="disclaimer">
-      <strong>免責事項</strong>：本サイトの情報は市場データ提供元から自動取得したものを情報提供のみを目的として掲載しており、
-      正確性・完全性・即時性を保証するものではありません。価格には遅延が含まれる場合があります。
-      投資判断は必ずご自身の責任で、一次情報をご確認のうえ行ってください。本サイトは投資勧誘を目的としたものではありません。
-    </p>
-    <p class="credits">
-      株価データ: Yahoo Finance ／ ニュース: 各配信元RSS ・ 見出しと要約の著作権は各配信元に帰属します
-    </p>
-  </div>
-</footer>
+  <!-- 右8割：ウォッチリストと全銘柄。 -->
+  <main id="main" class="board" tabindex="-1">
+    <section class="watchlist" aria-labelledby="watchlist-heading">
+      <div class="section-head">
+        <div>
+          <h2 id="watchlist-heading">ウォッチリスト</h2>
+          <p class="section-note" id="watchlist-note">相場の全体像をつかむ標準の組み合わせです</p>
+        </div>
+        <button type="button" class="ghost-btn" id="settings-open-2">銘柄を選ぶ</button>
+      </div>
+      <div class="watch-grid" id="watchlist"></div>
+    </section>
+
+    <nav class="board-nav" aria-label="セクション"><div id="section-nav"></div></nav>
+
+    <div id="market-sections"></div>
+
+    <footer class="site-footer">
+      <p class="disclaimer">
+        <strong>免責事項</strong>：掲載する価格は提供元から自動取得した<strong>遅延データ</strong>であり、
+        リアルタイムの取引価格ではありません。情報提供のみを目的としており、正確性・完全性・即時性を保証しません。
+        投資判断は必ずご自身の責任で、取引所や証券会社の一次情報をご確認のうえ行ってください。
+        本サイトは投資勧誘を目的としたものではありません。
+      </p>
+      <p class="credits" id="credits">
+        ニュース: 各配信元RSS ・ 見出しと要約の著作権は各配信元に帰属します
+      </p>
+    </footer>
+  </main>
+</div>
 
 <div class="detail-backdrop" id="detail" hidden>
   <div class="detail-panel" role="dialog" aria-modal="true" aria-labelledby="detail-name">
@@ -107,6 +120,37 @@
       <figcaption id="detail-caption"></figcaption>
     </figure>
     <dl class="detail-stats" id="detail-stats"></dl>
+  </div>
+</div>
+
+<div class="detail-backdrop" id="article" hidden>
+  <div class="detail-panel article-panel" role="dialog" aria-modal="true" aria-labelledby="article-title">
+    <div class="detail-head">
+      <p class="article-meta" id="article-meta"></p>
+      <button type="button" class="icon-btn" id="article-close" aria-label="閉じる">✕</button>
+    </div>
+    <h3 class="article-title" id="article-title"></h3>
+    <p class="article-summary" id="article-summary"></p>
+    <a class="article-link" id="article-link" href="#" target="_blank" rel="noopener noreferrer">
+      配信元の記事を読む
+    </a>
+  </div>
+</div>
+
+<div class="detail-backdrop" id="settings" hidden>
+  <div class="detail-panel settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="detail-head">
+      <div>
+        <h3 id="settings-title">ウォッチリストの設定</h3>
+        <p class="detail-sub" id="settings-count"></p>
+      </div>
+      <button type="button" class="icon-btn" id="settings-close" aria-label="閉じる">✕</button>
+    </div>
+    <div class="settings-body" id="settings-body"></div>
+    <div class="settings-foot">
+      <button type="button" class="ghost-btn" id="settings-reset">既定に戻す</button>
+      <button type="button" class="primary-btn" id="settings-save">保存する</button>
+    </div>
   </div>
 </div>
 

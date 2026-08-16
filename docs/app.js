@@ -1,7 +1,11 @@
 'use strict';
 
-const HIGHLIGHTS = ['^GSPC', '^N225', '^IXIC', '^VIX', 'USDJPY=X', '^TNX'];
-const NEWS_PAGE = 20;
+// 相場の全体像をつかむための既定の組み合わせ。設定画面から変更できる。
+const DEFAULT_WATCHLIST = [
+  'NIKKEI225', 'TOPIX', 'SP500', 'NASDAQCOM', 'VIXCLS', 'USD/JPY', 'DGS10', 'XAU/USD',
+];
+const NEWS_PAGE = 25;
+const STORE_WATCHLIST = 'watchlist';
 
 const state = {
   markets: null,
@@ -9,9 +13,21 @@ const state = {
   quotes: new Map(),
   newsLang: 'all',
   newsShown: NEWS_PAGE,
+  articles: [],
   detail: null,
   detailRange: 365,
+  watchlist: loadWatchlist(),
 };
+
+function loadWatchlist() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORE_WATCHLIST));
+    if (Array.isArray(saved) && saved.length) return saved;
+  } catch {
+    /* 壊れた保存値は既定に戻す */
+  }
+  return [...DEFAULT_WATCHLIST];
+}
 
 /* -------------------------------------------------------------- utilities */
 
@@ -32,6 +48,13 @@ function decimalsFor(value) {
 }
 
 const price = (value) => fmt(value, decimalsFor(value));
+
+// 指数・利回り・通貨で読み方が変わるため、単位に応じて整形する。
+function formatValue(value, unit) {
+  if (value === null || value === undefined) return '—';
+  if (unit === '%') return `${fmt(value, 2)}%`;
+  return fmt(value, decimalsFor(value));
+}
 
 function direction(value) {
   if (value === null || value === undefined || Number.isNaN(value)) return 'flat';
@@ -55,10 +78,12 @@ function deltaHTML(change, changePct, opts = {}) {
     return `<span class="pill ${dir}"><span class="sr-only">${label}</span>${arrow}${pct}</span>`;
   }
   // 前日比は値そのものではなく現在値の桁数に合わせる（7785 に対する +0.5 を +0.5000 と書かない）。
-  const abs =
-    change === null || change === undefined
-      ? '—'
-      : `${sign}${fmt(change, decimalsFor(opts.scale ?? change))}`;
+  // 利回りやスプレッドの差分は「％の差」なので、％ではなく pt（ポイント）で表す。
+  let abs = '—';
+  if (change !== null && change !== undefined) {
+    const suffix = opts.unit === '%' ? 'pt' : '';
+    abs = `${sign}${fmt(change, decimalsFor(opts.scale ?? change))}${suffix}`;
+  }
   return `<span class="delta ${dir}"><span class="sr-only">${label}</span>${arrow}${abs} (${pct})</span>`;
 }
 
@@ -105,8 +130,9 @@ function statTile(quote) {
   const dir = direction(quote.change_pct);
   return `<button type="button" class="stat-tile" data-symbol="${escapeHTML(quote.symbol)}">
     <span class="stat-label">${escapeHTML(quote.name)}</span>
-    <span class="stat-value">${price(quote.price)}</span>
-    <span class="stat-foot">${deltaHTML(quote.change, quote.change_pct, { scale: quote.price })}
+    <span class="stat-value">${formatValue(quote.price, quote.unit)}</span>
+    <span class="stat-foot">${deltaHTML(quote.change, quote.change_pct,
+      { scale: quote.price, unit: quote.unit })}
       ${sparkline(quote.history, dir)}</span>
   </button>`;
 }
@@ -119,11 +145,33 @@ function quoteRow(quote) {
       <span class="name-main">${escapeHTML(quote.name)}${stale}</span>
       <span class="name-sub">${escapeHTML(quote.subtitle || quote.symbol)}</span>
     </span></td>
-    <td class="price-cell">${price(quote.price)}</td>
-    <td>${deltaHTML(quote.change, quote.change_pct, { scale: quote.price })}</td>
+    <td class="price-cell">${formatValue(quote.price, quote.unit)}</td>
+    <td>${deltaHTML(quote.change, quote.change_pct,
+      { scale: quote.price, unit: quote.unit })}</td>
     <td>${deltaHTML(null, quote.change_pct, { pctOnly: true })}</td>
     <td class="spark-cell">${sparkline(quote.history, dir)}</td>
   </tr>`;
+}
+
+function renderWatchlist() {
+  const host = document.getElementById('watchlist');
+  const picked = state.watchlist.map((s) => state.quotes.get(s)).filter(Boolean);
+  const note = document.getElementById('watchlist-note');
+
+  if (!picked.length) {
+    host.innerHTML =
+      '<p class="empty-state">表示する銘柄が選ばれていません。「銘柄を選ぶ」から追加してください。</p>';
+    note.textContent = '';
+    return;
+  }
+
+  host.innerHTML = picked.map(statTile).join('');
+  const isDefault =
+    picked.length === DEFAULT_WATCHLIST.length &&
+    DEFAULT_WATCHLIST.every((s) => state.watchlist.includes(s));
+  note.textContent = isDefault
+    ? '相場の全体像をつかむ標準の組み合わせです'
+    : `選んだ${picked.length}銘柄を表示しています`;
 }
 
 function renderMarkets() {
@@ -131,8 +179,7 @@ function renderMarkets() {
   const nav = document.getElementById('section-nav');
   const host = document.getElementById('market-sections');
 
-  const highlightQuotes = HIGHLIGHTS.map((s) => state.quotes.get(s)).filter(Boolean);
-  document.getElementById('highlights').innerHTML = highlightQuotes.map(statTile).join('');
+  renderWatchlist();
 
   host.innerHTML = data.groups
     .map(
@@ -158,6 +205,13 @@ function renderMarkets() {
       .map((g) => `<a href="#${g.id}">${escapeHTML(g.name)}</a>`)
       .join('') + '<a href="#news">ニュース</a>';
 
+  const credits = document.getElementById('credits');
+  if (credits && data.sources?.length) {
+    credits.textContent =
+      `価格データ: ${data.sources.join(' ／ ')} ／ ニュース: 各配信元RSS`
+      + ' ・ 見出しと要約の著作権は各配信元に帰属します';
+  }
+
   const updated = new Date(data.updated_at);
   document.getElementById('updated').innerHTML =
     `最終更新<span>${updated.toLocaleString('ja-JP', {
@@ -177,34 +231,65 @@ function relativeTime(iso) {
   return `${Math.round(hours / 24)}日前`;
 }
 
+const TIER_LABEL = { primary: '一次情報', wire: '専門', general: '総合' };
+
 function renderNews() {
   const list = document.getElementById('news-list');
   const more = document.getElementById('news-more');
-  const articles = (state.news?.articles || []).filter(
+  state.articles = (state.news?.articles || []).filter(
     (a) => state.newsLang === 'all' || a.lang === state.newsLang
   );
 
-  if (!articles.length) {
+  if (!state.articles.length) {
     list.innerHTML = '<li><p class="empty-state">記事を取得できませんでした。</p></li>';
     more.hidden = true;
     return;
   }
 
-  list.innerHTML = articles
+  list.innerHTML = state.articles
     .slice(0, state.newsShown)
-    .map(
-      (a) => `<li><a href="${escapeHTML(a.url)}" target="_blank" rel="noopener noreferrer">
-      <div class="news-meta">
-        <span class="news-source">${escapeHTML(a.source)}</span>
-        <span>${escapeHTML(relativeTime(a.published))}</span>
-      </div>
-      <div class="news-title">${escapeHTML(a.title)}</div>
-      ${a.summary ? `<div class="news-summary">${escapeHTML(a.summary)}</div>` : ''}
-    </a></li>`
-    )
+    .map((a, i) => {
+      const tier = TIER_LABEL[a.tier]
+        ? `<span class="tier-badge ${a.tier}">${TIER_LABEL[a.tier]}</span>`
+        : '';
+      return `<li><button type="button" data-article="${i}">
+        <span class="news-meta">
+          ${tier}<span class="news-source">${escapeHTML(a.source)}</span>
+          <span>${escapeHTML(relativeTime(a.published))}</span>
+        </span>
+        <span class="news-title">${escapeHTML(a.title)}</span>
+      </button></li>`;
+    })
     .join('');
 
-  more.hidden = articles.length <= state.newsShown;
+  more.hidden = state.articles.length <= state.newsShown;
+}
+
+function openArticle(index) {
+  const article = state.articles[index];
+  if (!article) return;
+
+  const tier = TIER_LABEL[article.tier]
+    ? `<span class="tier-badge ${article.tier}">${TIER_LABEL[article.tier]}</span>`
+    : '';
+  document.getElementById('article-meta').innerHTML =
+    `${tier}<span class="news-source">${escapeHTML(article.source)}</span>
+     <span>${escapeHTML(relativeTime(article.published))}</span>`;
+  document.getElementById('article-title').textContent = article.title;
+
+  const summary = document.getElementById('article-summary');
+  summary.textContent = article.summary || '';
+  summary.hidden = !article.summary;
+
+  document.getElementById('article-link').href = article.url;
+
+  document.querySelectorAll('#news-list button').forEach((btn) => {
+    btn.classList.toggle('is-active', Number(btn.dataset.article) === index);
+  });
+
+  const panel = document.getElementById('article');
+  panel.hidden = false;
+  document.getElementById('article-close').focus();
 }
 
 /* ----------------------------------------------------------- detail chart */
@@ -328,9 +413,10 @@ function renderDetail() {
 
   document.getElementById('detail-name').textContent = quote.name;
   document.getElementById('detail-sub').textContent =
-    [quote.symbol, quote.exchange, quote.currency].filter(Boolean).join(' · ');
-  document.getElementById('detail-price').textContent = price(quote.price);
-  document.getElementById('detail-delta').innerHTML = deltaHTML(quote.change, quote.change_pct, { scale: quote.price });
+    [quote.subtitle, quote.source].filter(Boolean).join(' · ');
+  document.getElementById('detail-price').textContent = formatValue(quote.price, quote.unit);
+  document.getElementById('detail-delta').innerHTML =
+    deltaHTML(quote.change, quote.change_pct, { scale: quote.price, unit: quote.unit });
 
   const history = historyPoints(quote.history, state.detailRange);
   const dir = direction(history.length > 1 ? history[history.length - 1].c - history[0].c : 0);
@@ -346,13 +432,16 @@ function renderDetail() {
   document.getElementById('detail-caption').textContent =
     `${label}の終値推移（${history.length}営業日）`;
 
+  const periodValues = history.map((d) => d.c);
   const rows = [
-    ['前日終値', price(quote.prev_close)],
-    ['当日高値', price(quote.day_high)],
-    ['当日安値', price(quote.day_low)],
-    ['52週高値', price(quote.w52_high)],
-    ['52週安値', price(quote.w52_low)],
+    ['前日終値', formatValue(quote.prev_close, quote.unit)],
+    ['52週高値', formatValue(quote.w52_high, quote.unit)],
+    ['52週安値', formatValue(quote.w52_low, quote.unit)],
+    [`${label}高値`, formatValue(Math.max(...periodValues), quote.unit)],
+    [`${label}安値`, formatValue(Math.min(...periodValues), quote.unit)],
     [`${label}騰落率`, periodPct === null ? '—' : `${periodPct > 0 ? '+' : ''}${fmt(periodPct, 2)}%`],
+    ['データ基準日', quote.as_of || '—'],
+    ['情報源', quote.source || '—'],
   ];
   document.getElementById('detail-stats').innerHTML = rows
     .map(([term, value]) => `<div><dt>${term}</dt><dd>${value}</dd></div>`)
@@ -379,6 +468,59 @@ function closeDetail() {
   state.detail = null;
 }
 
+/* ------------------------------------------------------------------ 設定 */
+
+function openSettings() {
+  const body = document.getElementById('settings-body');
+  const chosen = new Set(state.watchlist);
+
+  body.innerHTML = state.markets.groups
+    .map(
+      (group) => `<div class="settings-group">
+      <h4>${escapeHTML(group.name)}</h4>
+      <div class="settings-options">
+        ${group.items
+          .map(
+            (item) => `<label>
+            <input type="checkbox" value="${escapeHTML(item.symbol)}"
+              ${chosen.has(item.symbol) ? 'checked' : ''}>
+            <span>${escapeHTML(item.name)}</span>
+          </label>`
+          )
+          .join('')}
+      </div>
+    </div>`
+    )
+    .join('');
+
+  updateSettingsCount();
+  document.getElementById('settings').hidden = false;
+  document.body.style.overflow = 'hidden';
+  document.getElementById('settings-close').focus();
+}
+
+function updateSettingsCount() {
+  const count = document.querySelectorAll('#settings-body input:checked').length;
+  document.getElementById('settings-count').textContent =
+    `${count}銘柄を選択中 — チェックした銘柄がウォッチリストに並びます`;
+}
+
+function closeSettings() {
+  document.getElementById('settings').hidden = true;
+  document.body.style.overflow = '';
+}
+
+function saveSettings() {
+  // 画面に並ぶ順番＝定義順を保つため、選択結果は DOM の並びから読み直す。
+  state.watchlist = Array.from(
+    document.querySelectorAll('#settings-body input:checked'),
+    (input) => input.value
+  );
+  localStorage.setItem(STORE_WATCHLIST, JSON.stringify(state.watchlist));
+  renderWatchlist();
+  closeSettings();
+}
+
 /* ------------------------------------------------------------------ theme */
 
 // CSS の既定が黒基調なので、ライトを選んだときだけ data-theme を立てる。
@@ -394,10 +536,24 @@ function applyTheme(theme) {
 
 /* ------------------------------------------------------------------- init */
 
+function closeTopmost() {
+  const order = ['settings', 'article', 'detail'];
+  const open = order.find((id) => !document.getElementById(id).hidden);
+  if (open === 'settings') closeSettings();
+  else if (open === 'article') document.getElementById('article').hidden = true;
+  else if (open === 'detail') closeDetail();
+  return Boolean(open);
+}
+
 function bindEvents() {
   document.body.addEventListener('click', (event) => {
-    const target = event.target.closest('[data-symbol]');
-    if (target) openDetail(target.dataset.symbol);
+    const article = event.target.closest('[data-article]');
+    if (article) {
+      openArticle(Number(article.dataset.article));
+      return;
+    }
+    const symbol = event.target.closest('[data-symbol]');
+    if (symbol) openDetail(symbol.dataset.symbol);
   });
 
   document.body.addEventListener('keydown', (event) => {
@@ -409,12 +565,19 @@ function bindEvents() {
     }
   });
 
-  document.getElementById('detail-close').addEventListener('click', closeDetail);
-  document.getElementById('detail').addEventListener('click', (event) => {
-    if (event.target.id === 'detail') closeDetail();
+  // 背景（オーバーレイ自身）のクリックと Esc は、いちばん手前の画面だけを閉じる。
+  ['detail', 'article', 'settings'].forEach((id) => {
+    document.getElementById(id).addEventListener('click', (event) => {
+      if (event.target.id === id) closeTopmost();
+    });
   });
+  document.getElementById('detail-close').addEventListener('click', closeDetail);
+  document.getElementById('article-close').addEventListener('click', () => {
+    document.getElementById('article').hidden = true;
+  });
+  document.getElementById('settings-close').addEventListener('click', closeSettings);
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !document.getElementById('detail').hidden) closeDetail();
+    if (event.key === 'Escape') closeTopmost();
   });
 
   document.getElementById('range-picker').addEventListener('click', (event) => {
@@ -427,20 +590,46 @@ function bindEvents() {
     renderDetail();
   });
 
-  document.querySelector('.news .segmented').addEventListener('click', (event) => {
+  document.querySelector('.rail-head .segmented').addEventListener('click', (event) => {
     const btn = event.target.closest('button');
     if (!btn) return;
     state.newsLang = btn.dataset.lang;
     state.newsShown = NEWS_PAGE;
-    document.querySelectorAll('.news .segmented button').forEach((b) =>
+    document.querySelectorAll('.rail-head .segmented button').forEach((b) =>
       b.classList.toggle('is-active', b === btn)
     );
     renderNews();
+    document.getElementById('news-list').scrollTop = 0;
   });
 
   document.getElementById('news-more').addEventListener('click', () => {
     state.newsShown += NEWS_PAGE;
     renderNews();
+  });
+
+  [document.getElementById('settings-open'), document.getElementById('settings-open-2')]
+    .forEach((btn) => btn.addEventListener('click', openSettings));
+  document.getElementById('settings-body').addEventListener('change', updateSettingsCount);
+  document.getElementById('settings-save').addEventListener('click', saveSettings);
+  document.getElementById('settings-reset').addEventListener('click', () => {
+    const defaults = new Set(DEFAULT_WATCHLIST);
+    document.querySelectorAll('#settings-body input').forEach((input) => {
+      input.checked = defaults.has(input.value);
+    });
+    updateSettingsCount();
+  });
+
+  // 狭い画面ではニュースと相場をタブで切り替える。
+  document.querySelector('.mobile-tabs').addEventListener('click', (event) => {
+    const btn = event.target.closest('button');
+    if (!btn) return;
+    const showNews = btn.dataset.pane === 'news';
+    document.getElementById('news-pane').dataset.paneHidden = String(!showNews);
+    document.getElementById('main').dataset.paneHidden = String(showNews);
+    document.querySelectorAll('.mobile-tabs button').forEach((b) => {
+      b.classList.toggle('is-active', b === btn);
+      b.setAttribute('aria-selected', String(b === btn));
+    });
   });
 
   document.getElementById('theme-toggle').addEventListener('click', () => {
