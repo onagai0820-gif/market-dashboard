@@ -140,7 +140,10 @@ a { color: inherit; }
 .brand-mark { width: 32px; height: 32px; flex: none; }
 .brand-mark rect { fill: var(--accent); }
 .brand-mark path { stroke: #fff; }
-.brand-name { display: block; font-size: 17px; font-weight: 700; letter-spacing: 0.01em; }
+.brand-name {
+  display: block; margin: 0; font-size: 17px; font-weight: 700;
+  letter-spacing: 0.01em; line-height: 1.3;
+}
 .brand-sub { display: block; font-size: 11.5px; color: var(--muted); line-height: 1.3; }
 
 .header-tools { display: flex; align-items: center; gap: 10px; }
