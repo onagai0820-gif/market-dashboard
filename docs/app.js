@@ -287,9 +287,14 @@ function openArticle(index) {
     btn.classList.toggle('is-active', Number(btn.dataset.article) === index);
   });
 
-  const panel = document.getElementById('article');
-  panel.hidden = false;
+  document.getElementById('article').hidden = false;
+  syncBodyScroll();
   document.getElementById('article-close').focus();
+}
+
+function closeArticle() {
+  document.getElementById('article').hidden = true;
+  syncBodyScroll();
 }
 
 /* ----------------------------------------------------------- detail chart */
@@ -457,14 +462,14 @@ function openDetail(symbol) {
     btn.classList.toggle('is-active', Number(btn.dataset.range) === 365)
   );
   document.getElementById('detail').hidden = false;
-  document.body.style.overflow = 'hidden';
+  syncBodyScroll();
   renderDetail();
   document.getElementById('detail-close').focus();
 }
 
 function closeDetail() {
   document.getElementById('detail').hidden = true;
-  document.body.style.overflow = '';
+  syncBodyScroll();
   state.detail = null;
 }
 
@@ -495,7 +500,7 @@ function openSettings() {
 
   updateSettingsCount();
   document.getElementById('settings').hidden = false;
-  document.body.style.overflow = 'hidden';
+  syncBodyScroll();
   document.getElementById('settings-close').focus();
 }
 
@@ -507,7 +512,7 @@ function updateSettingsCount() {
 
 function closeSettings() {
   document.getElementById('settings').hidden = true;
-  document.body.style.overflow = '';
+  syncBodyScroll();
 }
 
 function saveSettings() {
@@ -536,11 +541,19 @@ function applyTheme(theme) {
 
 /* ------------------------------------------------------------------- init */
 
+const OVERLAYS = ['settings', 'article', 'detail'];
+
+// 重ねて開くことは無いが、閉じ忘れで本文がスクロールできなくなると詰むので、
+// 開いているものが1つでも残っているかを見て毎回决め直す。
+function syncBodyScroll() {
+  const anyOpen = OVERLAYS.some((id) => !document.getElementById(id).hidden);
+  document.body.style.overflow = anyOpen ? 'hidden' : '';
+}
+
 function closeTopmost() {
-  const order = ['settings', 'article', 'detail'];
-  const open = order.find((id) => !document.getElementById(id).hidden);
+  const open = OVERLAYS.find((id) => !document.getElementById(id).hidden);
   if (open === 'settings') closeSettings();
-  else if (open === 'article') document.getElementById('article').hidden = true;
+  else if (open === 'article') closeArticle();
   else if (open === 'detail') closeDetail();
   return Boolean(open);
 }
@@ -572,9 +585,7 @@ function bindEvents() {
     });
   });
   document.getElementById('detail-close').addEventListener('click', closeDetail);
-  document.getElementById('article-close').addEventListener('click', () => {
-    document.getElementById('article').hidden = true;
-  });
+  document.getElementById('article-close').addEventListener('click', closeArticle);
   document.getElementById('settings-close').addEventListener('click', closeSettings);
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') closeTopmost();

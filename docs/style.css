@@ -485,12 +485,22 @@ table.quotes tbody tr:hover td { background: var(--accent-soft); }
 
 /* 画面が狭いときは2割/8割の並びが成立しないので、タブでの切り替えに変える。 */
 @media (max-width: 860px) {
+  /* dvh はURLバーの開閉で値が変わるため、これで高さを固定するとスクロール中に
+     レイアウトが伸び縮みして画面が揺れる。狭い画面では内側のスクロール枠をやめ、
+     ページ全体を普通にスクロールさせる。 */
   .layout {
     grid-template-columns: 1fr;
-    height: calc(100dvh - var(--header-h) - 42px);
+    height: auto;
   }
+  .news-rail, .board {
+    height: auto; min-height: 0; overflow: visible;
+  }
+  .news-list {
+    flex: none; overflow: visible;
+  }
+
   .mobile-tabs {
-    position: relative; z-index: 1;
+    position: sticky; top: var(--header-h); z-index: 15;
     display: grid; grid-template-columns: 1fr 1fr; height: 42px;
     background: var(--plane); border-bottom: 1px solid var(--border);
   }
@@ -501,9 +511,18 @@ table.quotes tbody tr:hover td { background: var(--accent-soft); }
   .mobile-tabs button.is-active {
     color: var(--ink); font-weight: 650; box-shadow: inset 0 -2px 0 var(--accent);
   }
+
   .news-rail { border-right: 0; }
   .news-rail[data-pane-hidden="true"], .board[data-pane-hidden="true"] { display: none; }
   .board { padding: 0 16px; }
+
+  /* ぼかしと固定背景はスクロールのたびに再描画が走り、スマホでは目に見えて重い。 */
+  .site-header, .board-nav {
+    backdrop-filter: none;
+    background: var(--plane);
+  }
+  body::before { position: absolute; }
+  .board-nav { position: static; margin-top: 26px; }
 }
 
 @media (max-width: 640px) {
@@ -512,6 +531,13 @@ table.quotes tbody tr:hover td { background: var(--accent-soft); }
   .detail-value { font-size: 27px; }
   .detail-panel { padding: 16px; }
   .watch-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+
+  /* 表が画面幅に収まらないと横スクロールが生まれ、縦スワイプと取り合いになる。
+     前日比と30日推移を隠して1画面に収める。どちらも行をタップすれば詳細で見られる。 */
+  table.quotes { min-width: 0; font-size: 13.5px; }
+  table.quotes th, table.quotes td { padding: 9px 10px; }
+  table.quotes th:nth-child(3), table.quotes td:nth-child(3),
+  table.quotes th:nth-child(5), table.quotes td:nth-child(5) { display: none; }
   .settings-options { grid-template-columns: 1fr; }
 }
 
